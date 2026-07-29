@@ -1,30 +1,26 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 
+import 'package:logi_z407_remote/bluetooth_manager.dart';
 import 'package:logi_z407_remote/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('Home page renders the Z407 controls', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      ChangeNotifierProvider<BluetoothManager>(
+        create: (_) => BluetoothManager(),
+        child: const MaterialApp(home: HomePage()),
+      ),
+    );
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('Z407 Remote'), findsOneWidget);
+    expect(find.text('Volume'), findsOneWidget);
+    expect(find.text('Bass'), findsOneWidget);
+    expect(find.text('Input'), findsOneWidget);
+    expect(find.text('Play/Pause'), findsOneWidget);
+    expect(find.text('Bluetooth'), findsOneWidget);
+    expect(find.text('AUX'), findsOneWidget);
+    expect(find.text('USB'), findsOneWidget);
   });
 }

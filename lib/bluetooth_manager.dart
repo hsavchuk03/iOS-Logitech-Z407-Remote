@@ -13,8 +13,11 @@ class BluetoothManager extends ChangeNotifier {
   final String _targetDeviceHint;
 
   BluetoothDevice? _device;
-  BluetoothCharacteristic? _controlChar;
+  BluetoothCharacteristic? _commandChar;
+  BluetoothCharacteristic? _responseChar;
   StreamSubscription<List<ScanResult>>? _scanSubscription;
+  StreamSubscription<List<int>>? _responseSubscription;
+  Completer<void>? _handshakeCompleter;
 
   final Queue<List<int>> _pendingWrites = Queue<List<int>>();
   bool _isProcessingQueue = false;
@@ -81,35 +84,90 @@ class BluetoothManager extends ChangeNotifier {
       await target.connect(autoConnect: false);
       _device = target;
       _deviceName = target.platformName.isNotEmpty ? target.platformName : _deviceName;
+      _setStatus(BleConnectionStatus.connecting, 'Handshaking with $_deviceName');
+
+      await _discoverCharacteristics();
+      await _performHandshake();
+
       _setStatus(BleConnectionStatus.connected, 'Connected to $_deviceName');
-      await _discoverControlCharacteristic();
     } catch (e) {
       _setStatus(BleConnectionStatus.error, 'Connection failed: $e');
     }
   }
 
-  Future<void> _discoverControlCharacteristic() async {
+  Future<void> _discoverCharacteristics() async {
     if (_device == null) {
       return;
     }
 
-    try {
-      final services = await _device!.discoverServices();
-      for (final service in services) {
-        if (service.uuid.toString().toLowerCase() == LogiConstants.serviceUuid.toLowerCase()) {
-          for (final characteristic in service.characteristics) {
-            if (characteristic.uuid.toString().toLowerCase() ==
-                LogiConstants.characteristicUuid.toLowerCase()) {
-              _controlChar = characteristic;
-              return;
-            }
-          }
+    _commandChar = null;
+    _responseChar = null;
+
+    final services = await _device!.discoverServices();
+    for (final service in services) {
+      if (service.uuid.toString().toLowerCase() != LogiConstants.serviceUuid.toLowerCase()) {
+        continue;
+      }
+      for (final characteristic in service.characteristics) {
+        final uuid = characteristic.uuid.toString().toLowerCase();
+        if (uuid == LogiConstants.commandCharacteristicUuid.toLowerCase()) {
+          _commandChar = characteristic;
+        } else if (uuid == LogiConstants.responseCharacteristicUuid.toLowerCase()) {
+          _responseChar = characteristic;
         }
       }
-      _controlChar = null;
-    } catch (_) {
-      _controlChar = null;
     }
+
+    if (_commandChar == null || _responseChar == null) {
+      throw Exception('Z407 control characteristics not found');
+    }
+  }
+
+  // The speaker requires a two-step handshake after connecting, or it will
+  // terminate the connection after a few seconds. See constants.dart for the
+  // byte sequences and their source.
+  Future<void> _performHandshake() async {
+    final commandChar = _commandChar;
+    final responseChar = _responseChar;
+    if (commandChar == null || responseChar == null) {
+      throw Exception('Z407 control characteristics not found');
+    }
+
+    _handshakeCompleter = Completer<void>();
+
+    await _responseSubscription?.cancel();
+    await responseChar.setNotifyValue(true);
+    _responseSubscription = responseChar.onValueReceived.listen(_handleResponse);
+
+    await commandChar.write(LogiConstants.handshakeInitiate, withoutResponse: true);
+
+    await _handshakeCompleter!.future.timeout(
+      const Duration(seconds: 10),
+      onTimeout: () => throw TimeoutException('Z407 handshake timed out'),
+    );
+  }
+
+  void _handleResponse(List<int> data) {
+    if (_bytesEqual(data, LogiConstants.handshakeInitiateResponse)) {
+      unawaited(_commandChar?.write(LogiConstants.handshakeAcknowledge, withoutResponse: true));
+    } else if (_bytesEqual(data, LogiConstants.handshakeConnectedResponse)) {
+      final completer = _handshakeCompleter;
+      if (completer != null && !completer.isCompleted) {
+        completer.complete();
+      }
+    }
+  }
+
+  bool _bytesEqual(List<int> a, List<int> b) {
+    if (a.length != b.length) {
+      return false;
+    }
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) {
+        return false;
+      }
+    }
+    return true;
   }
 
   Future<void> sendCommand(List<int> payload) async {
@@ -137,51 +195,28 @@ class BluetoothManager extends ChangeNotifier {
     }
 
     final connectionState = await _device!.connectionState.first;
-    if (connectionState != BluetoothConnectionState.connected) {
+    if (connectionState != BluetoothConnectionState.connected || _commandChar == null) {
       await connectToDevice();
     }
 
-    if (_device == null) {
+    if (_commandChar == null) {
       _setStatus(BleConnectionStatus.disconnected, 'Device unavailable');
       return;
     }
 
     try {
-      await _ensureCharacteristic();
-      if (_controlChar != null) {
-        await _controlChar!.write(payload, withoutResponse: true);
-        return;
-      }
-
-      final services = await _device!.discoverServices();
-      for (final service in services) {
-        for (final characteristic in service.characteristics) {
-          if (characteristic.uuid.toString().toLowerCase() ==
-              LogiConstants.characteristicUuid.toLowerCase()) {
-            _controlChar = characteristic;
-            await _controlChar!.write(payload, withoutResponse: true);
-            return;
-          }
-        }
-      }
-
-      _setStatus(BleConnectionStatus.error, 'Target characteristic unavailable');
+      await _commandChar!.write(payload, withoutResponse: true);
     } catch (e) {
       _setStatus(BleConnectionStatus.error, 'Write failed: $e');
       debugPrint('BLE write failed: $e');
     }
   }
 
-  Future<void> _ensureCharacteristic() async {
-    if (_controlChar != null) {
-      return;
-    }
-    await _discoverControlCharacteristic();
-  }
-
   Future<void> disconnect() async {
     await _scanSubscription?.cancel();
     _scanSubscription = null;
+    await _responseSubscription?.cancel();
+    _responseSubscription = null;
     await FlutterBluePlus.stopScan();
 
     if (_device != null) {
@@ -191,7 +226,8 @@ class BluetoothManager extends ChangeNotifier {
     }
 
     _device = null;
-    _controlChar = null;
+    _commandChar = null;
+    _responseChar = null;
     _setStatus(BleConnectionStatus.disconnected, 'Disconnected');
   }
 
@@ -204,6 +240,7 @@ class BluetoothManager extends ChangeNotifier {
   @override
   void dispose() {
     _scanSubscription?.cancel();
+    _responseSubscription?.cancel();
     FlutterBluePlus.stopScan();
     super.dispose();
   }

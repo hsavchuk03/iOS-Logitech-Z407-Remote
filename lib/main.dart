@@ -56,7 +56,7 @@ class HomePage extends StatelessWidget {
         ],
       ),
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
           child: Column(
             children: [
@@ -175,11 +175,40 @@ class HomePage extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 24),
+              Text(
+                'Bass',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton.filled(
+                    onPressed: () => manager.sendCommand(LogiConstants.bassDown),
+                    icon: const Icon(Icons.remove_rounded),
+                  ),
+                  const SizedBox(width: 24),
+                  const Icon(Icons.graphic_eq_rounded),
+                  const SizedBox(width: 24),
+                  IconButton.filled(
+                    onPressed: () => manager.sendCommand(LogiConstants.bassUp),
+                    icon: const Icon(Icons.add_rounded),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
               Wrap(
                 spacing: 12,
                 runSpacing: 12,
                 alignment: WrapAlignment.center,
                 children: [
+                  FilledButton.icon(
+                    onPressed: () => manager.sendCommand(LogiConstants.prevTrack),
+                    icon: const Icon(Icons.skip_previous_rounded),
+                    label: const Text('Previous'),
+                  ),
                   FilledButton.icon(
                     onPressed: () => manager.sendCommand(LogiConstants.playPause),
                     icon: const Icon(Icons.play_arrow_rounded),
@@ -190,10 +219,35 @@ class HomePage extends StatelessWidget {
                     icon: const Icon(Icons.skip_next_rounded),
                     label: const Text('Next Track'),
                   ),
-                  FilledButton.icon(
-                    onPressed: () => manager.sendCommand(LogiConstants.inputSwitch),
-                    icon: const Icon(Icons.swap_horiz_rounded),
-                    label: const Text('Input Switch'),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Input',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                alignment: WrapAlignment.center,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () => manager.sendCommand(LogiConstants.inputBluetooth),
+                    icon: const Icon(Icons.bluetooth_rounded),
+                    label: const Text('Bluetooth'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => manager.sendCommand(LogiConstants.inputAux),
+                    icon: const Icon(Icons.cable_rounded),
+                    label: const Text('AUX'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => manager.sendCommand(LogiConstants.inputUsb),
+                    icon: const Icon(Icons.usb_rounded),
+                    label: const Text('USB'),
                   ),
                 ],
               ),
