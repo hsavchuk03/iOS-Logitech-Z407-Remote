@@ -1,0 +1,61 @@
+name: Build iOS IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build unsigned IPA
+    runs-on: macos-14
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Get Flutter packages
+        run: flutter pub get
+
+      - name: Install CocoaPods dependencies
+        working-directory: ios
+        run: pod install --repo-update
+
+      - name: Build unsigned iOS app
+        run: flutter build ios --release --no-codesign
+
+      - name: Ad-hoc sign and package IPA
+        run: |
+          set -euo pipefail
+
+          APP_PATH="build/ios/iphoneos/Runner.app"
+
+          if [ -d "$APP_PATH/Frameworks" ]; then
+            for framework in "$APP_PATH"/Frameworks/*.framework; do
+              binary_name=$(basename "$framework" .framework)
+              if [ -f "$framework/$binary_name" ]; then
+                codesign --force --deep --sign - --preserve-metadata=identifier,flags --timestamp=none "$framework/$binary_name"
+              fi
+            done
+          fi
+
+          codesign --force --deep --sign - --preserve-metadata=identifier,flags --timestamp=none "$APP_PATH"
+
+          mkdir -p build/ios/iphoneos/Payload
+          rm -rf build/ios/iphoneos/Payload/Runner.app
+          cp -R "$APP_PATH" build/ios/iphoneos/Payload/Runner.app
+          ditto -c -k --sequesterRsrc --keepParent build/ios/iphoneos/Payload build/ios/iphoneos/Z407Remote.ipa
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Z407Remote-ipa
+          path: build/ios/iphoneos/Z407Remote.ipa
+          retention-days: 14

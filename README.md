@@ -2,33 +2,18 @@
 
 Control Logitech Z407 speakers over BLE using Flutter.
 
-## Build on a Mac for sideloading with a free Apple ID
+## Build the IPA with GitHub Actions
 
-1. Install Flutter and Xcode on the Mac.
-2. Install CocoaPods if needed:
-   - `sudo gem install cocoapods`
-3. Open Terminal in this project folder.
-4. Run:
-   - `flutter pub get`
-   - `cd ios`
-   - `pod install`
-   - `cd ..`
-5. Open the Xcode workspace:
-   - `open ios/Runner.xcworkspace`
-6. In Xcode, sign in with your free Apple ID:
-   - Xcode → Settings → Accounts → + → Apple ID
-7. Select the Runner target and enable signing:
-   - Signing & Capabilities
-   - turn on “Automatically manage signing”
-   - choose your personal team
-8. If Xcode asks for a bundle identifier, use something unique such as `com.yourname.z407remote`.
-9. Connect your iPhone and press Run.
+Builds run in CI via [.github/workflows/ios-build.yml](.github/workflows/ios-build.yml) — no Mac, Codemagic account, or VM required.
 
-### SideStore / free Apple ID workflow
-- This project is set up for a standard Apple ID and sideloading rather than App Store distribution.
-- After the build succeeds, you can install the generated app on your device with SideStore.
-- SideStore will usually require re-signing periodically, so expect to refresh the app every 7 days.
-- If Xcode says the app is not signed, make sure the Apple ID is added under Xcode Accounts and that the Runner target is using the personal team.
+1. Push to `main`, or trigger the workflow manually from the **Actions** tab (`Build iOS IPA` → **Run workflow**).
+2. The workflow builds an unsigned `Runner.app`, ad-hoc signs it (`codesign --sign -`), and zips it into `Z407Remote.ipa`.
+3. Once the run finishes, download the `Z407Remote-ipa` artifact from the workflow run's summary page.
+
+### SideStore / free Apple ID sideloading
+- This project targets sideloading with SideStore, not App Store distribution — the IPA from CI is ad-hoc signed only.
+- Install the downloaded `Z407Remote.ipa` on your device through SideStore, which re-signs it with your Apple ID.
+- SideStore re-signs apps periodically, so expect to refresh the app roughly every 7 days.
 
 ## Notes
 - The app uses the proprietary Logitech Z407 BLE service and characteristic UUIDs.
