@@ -87,7 +87,8 @@ class HomePage extends StatelessWidget {
                             style: const TextStyle(fontWeight: FontWeight.w600),
                           ),
                           Text(
-                            manager.deviceName != null
+                            manager.status == BleConnectionStatus.connected &&
+                                    manager.deviceName != null
                                 ? 'Connected to ${manager.deviceName}'
                                 : manager.statusMessage,
                             style: TextStyle(color: Colors.white70),
