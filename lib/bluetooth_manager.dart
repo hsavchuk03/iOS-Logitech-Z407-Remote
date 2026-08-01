@@ -7,15 +7,11 @@ import 'constants.dart';
 enum BleConnectionStatus { scanning, connecting, connected, disconnected, error }
 
 class BluetoothManager extends ChangeNotifier {
-  BluetoothManager({String targetDeviceHint = LogiConstants.defaultDeviceHint})
-      : _targetDeviceHint = targetDeviceHint;
-
-  final String _targetDeviceHint;
-
   BluetoothDevice? _device;
   BluetoothCharacteristic? _commandChar;
   BluetoothCharacteristic? _responseChar;
   StreamSubscription<List<ScanResult>>? _scanSubscription;
+  StreamSubscription<bool>? _isScanningSubscription;
   StreamSubscription<List<int>>? _responseSubscription;
   Completer<void>? _handshakeCompleter;
 
@@ -33,6 +29,8 @@ class BluetoothManager extends ChangeNotifier {
   Future<void> startScan({Duration timeout = const Duration(seconds: 8)}) async {
     await _scanSubscription?.cancel();
     _scanSubscription = null;
+    await _isScanningSubscription?.cancel();
+    _isScanningSubscription = null;
 
     _setStatus(BleConnectionStatus.scanning, 'Scanning for Z407…');
 
@@ -44,30 +42,41 @@ class BluetoothManager extends ChangeNotifier {
         androidUsesFineLocation: true,
       );
 
+      var found = false;
+
+      // The Z407 only advertises the fdc2 service, no local name, so any
+      // result that clears the OS-level service filter is already the
+      // speaker - don't additionally require a name match (it may not
+      // advertise one at all).
       _scanSubscription = FlutterBluePlus.scanResults.listen(
         (results) async {
-          for (final result in results) {
-            final device = result.device;
-            final label = device.platformName.isNotEmpty ? device.platformName : 'Unknown';
-            final matchesHint =
-                label.toLowerCase().contains(_targetDeviceHint.toLowerCase()) ||
-                label.toLowerCase().contains('z407');
-
-            if (matchesHint) {
-              _device = device;
-              _deviceName = label;
-              _setStatus(BleConnectionStatus.connecting, 'Connecting to $label');
-              await _scanSubscription?.cancel();
-              _scanSubscription = null;
-              unawaited(connectToDevice(device));
-              return;
-            }
+          if (found || results.isEmpty) {
+            return;
           }
+          found = true;
+
+          final device = results.first.device;
+          final label = device.platformName.isNotEmpty ? device.platformName : 'Z407';
+          _device = device;
+          _deviceName = label;
+          _setStatus(BleConnectionStatus.connecting, 'Connecting to $label');
+          await _scanSubscription?.cancel();
+          _scanSubscription = null;
+          unawaited(connectToDevice(device));
         },
         onError: (_) {
           _setStatus(BleConnectionStatus.error, 'Scan failed');
         },
       );
+
+      _isScanningSubscription = FlutterBluePlus.isScanning.listen((scanning) {
+        if (scanning || found) {
+          return;
+        }
+        _isScanningSubscription?.cancel();
+        _isScanningSubscription = null;
+        _setStatus(BleConnectionStatus.disconnected, 'Z407 not found. Tap refresh to retry.');
+      });
     } catch (_) {
       _setStatus(BleConnectionStatus.error, 'Scan failed');
     }
@@ -215,6 +224,8 @@ class BluetoothManager extends ChangeNotifier {
   Future<void> disconnect() async {
     await _scanSubscription?.cancel();
     _scanSubscription = null;
+    await _isScanningSubscription?.cancel();
+    _isScanningSubscription = null;
     await _responseSubscription?.cancel();
     _responseSubscription = null;
     await FlutterBluePlus.stopScan();
@@ -240,6 +251,7 @@ class BluetoothManager extends ChangeNotifier {
   @override
   void dispose() {
     _scanSubscription?.cancel();
+    _isScanningSubscription?.cancel();
     _responseSubscription?.cancel();
     FlutterBluePlus.stopScan();
     super.dispose();

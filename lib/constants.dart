@@ -29,6 +29,4 @@ class LogiConstants {
   static const List<int> inputBluetooth = [0x81, 0x01];
   static const List<int> inputAux = [0x81, 0x02];
   static const List<int> inputUsb = [0x81, 0x03];
-
-  static const String defaultDeviceHint = 'Z407';
 }
