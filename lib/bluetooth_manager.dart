@@ -13,8 +13,6 @@ class BluetoothManager extends ChangeNotifier {
   StreamSubscription<List<ScanResult>>? _scanSubscription;
   StreamSubscription<bool>? _isScanningSubscription;
   StreamSubscription<List<int>>? _responseSubscription;
-  Completer<void>? _handshakeCompleter;
-  List<int>? _lastResponseBytes;
 
   final Queue<List<int>> _pendingWrites = Queue<List<int>>();
   bool _isProcessingQueue = false;
@@ -97,7 +95,7 @@ class BluetoothManager extends ChangeNotifier {
       _setStatus(BleConnectionStatus.connecting, 'Handshaking with $_deviceName');
 
       await _discoverCharacteristics();
-      await _performHandshake();
+      await _startHandshake();
 
       _setStatus(BleConnectionStatus.connected, 'Connected to $_deviceName');
     } catch (e) {
@@ -134,49 +132,29 @@ class BluetoothManager extends ChangeNotifier {
     }
   }
 
-  // The speaker requires a two-step handshake after connecting, or it will
-  // terminate the connection after a few seconds. See constants.dart for the
-  // byte sequences and their source.
-  Future<void> _performHandshake() async {
+  // The speaker requires a handshake after connecting, or it will terminate
+  // the connection after a few seconds. The real device's response sequence
+  // doesn't reliably match the documented byte patterns (observed values
+  // outside the documented set), so - matching the known-working Bleak
+  // reference - we fire the handshake and respond to whatever comes back
+  // in the background instead of blocking/timing out on a specific reply.
+  Future<void> _startHandshake() async {
     final commandChar = _commandChar;
     final responseChar = _responseChar;
     if (commandChar == null || responseChar == null) {
       throw Exception('Z407 control characteristics not found');
     }
 
-    _handshakeCompleter = Completer<void>();
-
     await _responseSubscription?.cancel();
     await responseChar.setNotifyValue(true);
     _responseSubscription = responseChar.onValueReceived.listen(_handleResponse);
 
     await commandChar.write(LogiConstants.handshakeInitiate, withoutResponse: true);
-
-    await _handshakeCompleter!.future.timeout(
-      const Duration(seconds: 10),
-      onTimeout: () {
-        final last = _lastResponseBytes;
-        final lastHex = last == null
-            ? 'none'
-            : last.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ');
-        throw TimeoutException('Z407 handshake timed out (last response: $lastHex)');
-      },
-    );
   }
 
   void _handleResponse(List<int> data) {
-    _lastResponseBytes = data;
     if (_bytesEqual(data, LogiConstants.handshakeInitiateResponse)) {
       unawaited(_commandChar?.write(LogiConstants.handshakeAcknowledge, withoutResponse: true));
-    } else if (_bytesEqual(data, LogiConstants.handshakeAckResponse) ||
-        _bytesEqual(data, LogiConstants.handshakeConnectedResponse)) {
-      // The speaker's final "fully established" message (0xd40003) isn't
-      // reliably observed in practice - treat the ack response (0xd40001)
-      // as sufficient, matching the known-working Bleak reference.
-      final completer = _handshakeCompleter;
-      if (completer != null && !completer.isCompleted) {
-        completer.complete();
-      }
     }
   }
 
