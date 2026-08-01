@@ -112,11 +112,12 @@ class BluetoothManager extends ChangeNotifier {
     _commandChar = null;
     _responseChar = null;
 
+    // Match characteristics by UUID alone, regardless of which service they're
+    // nested under - mirrors how the known-working Bleak reference
+    // implementation resolves them (get_characteristic by UUID, not scoped
+    // to a specific parent service).
     final services = await _device!.discoverServices();
     for (final service in services) {
-      if (service.uuid.toString().toLowerCase() != LogiConstants.serviceUuid.toLowerCase()) {
-        continue;
-      }
       for (final characteristic in service.characteristics) {
         final uuid = characteristic.uuid.toString().toLowerCase();
         if (uuid == LogiConstants.commandCharacteristicUuid.toLowerCase()) {
