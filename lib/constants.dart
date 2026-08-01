@@ -6,8 +6,8 @@ class LogiConstants {
       'b84ac9c6-29c5-46d4-bba1-9d534784330f';
 
   // Connection handshake (required after connecting, or the speaker drops
-  // the connection after a few seconds). See:
-  // https://github.com/freundTech/logi-z407-reverse-engineering/blob/main/doc/Protocol.md
+  // the connection after a few seconds). See README credits for the source
+  // of this protocol.
   static const List<int> handshakeInitiate = [0x84, 0x05];
   static const List<int> handshakeAcknowledge = [0x84, 0x00];
   static const List<int> handshakeInitiateResponse = [0xd4, 0x05, 0x01];

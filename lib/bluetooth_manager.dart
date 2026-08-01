@@ -111,10 +111,9 @@ class BluetoothManager extends ChangeNotifier {
     _commandChar = null;
     _responseChar = null;
 
-    // Match characteristics by UUID alone, regardless of which service they're
-    // nested under - mirrors how the known-working Bleak reference
-    // implementation resolves them (get_characteristic by UUID, not scoped
-    // to a specific parent service).
+    // Match characteristics by UUID alone, regardless of which service
+    // they're nested under - scoping the search to a specific parent
+    // service UUID caused real devices to go unmatched.
     final services = await _device!.discoverServices();
     for (final service in services) {
       for (final characteristic in service.characteristics) {
@@ -134,10 +133,9 @@ class BluetoothManager extends ChangeNotifier {
 
   // The speaker requires a handshake after connecting, or it will terminate
   // the connection after a few seconds. The real device's response sequence
-  // doesn't reliably match the documented byte patterns (observed values
-  // outside the documented set), so - matching the known-working Bleak
-  // reference - we fire the handshake and respond to whatever comes back
-  // in the background instead of blocking/timing out on a specific reply.
+  // doesn't reliably match the documented byte patterns, so we fire the
+  // handshake and respond to whatever comes back in the background instead
+  // of blocking/timing out on a specific reply.
   Future<void> _startHandshake() async {
     final commandChar = _commandChar;
     final responseChar = _responseChar;
