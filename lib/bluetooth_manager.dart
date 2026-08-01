@@ -14,6 +14,7 @@ class BluetoothManager extends ChangeNotifier {
   StreamSubscription<bool>? _isScanningSubscription;
   StreamSubscription<List<int>>? _responseSubscription;
   Completer<void>? _handshakeCompleter;
+  List<int>? _lastResponseBytes;
 
   final Queue<List<int>> _pendingWrites = Queue<List<int>>();
   bool _isProcessingQueue = false;
@@ -153,14 +154,25 @@ class BluetoothManager extends ChangeNotifier {
 
     await _handshakeCompleter!.future.timeout(
       const Duration(seconds: 10),
-      onTimeout: () => throw TimeoutException('Z407 handshake timed out'),
+      onTimeout: () {
+        final last = _lastResponseBytes;
+        final lastHex = last == null
+            ? 'none'
+            : last.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ');
+        throw TimeoutException('Z407 handshake timed out (last response: $lastHex)');
+      },
     );
   }
 
   void _handleResponse(List<int> data) {
+    _lastResponseBytes = data;
     if (_bytesEqual(data, LogiConstants.handshakeInitiateResponse)) {
       unawaited(_commandChar?.write(LogiConstants.handshakeAcknowledge, withoutResponse: true));
-    } else if (_bytesEqual(data, LogiConstants.handshakeConnectedResponse)) {
+    } else if (_bytesEqual(data, LogiConstants.handshakeAckResponse) ||
+        _bytesEqual(data, LogiConstants.handshakeConnectedResponse)) {
+      // The speaker's final "fully established" message (0xd40003) isn't
+      // reliably observed in practice - treat the ack response (0xd40001)
+      // as sufficient, matching the known-working Bleak reference.
       final completer = _handshakeCompleter;
       if (completer != null && !completer.isCompleted) {
         completer.complete();
